@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "crates/fabric-core",
+    "crates/fabric-bench",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+
