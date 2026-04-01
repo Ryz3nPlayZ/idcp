@@ -38,12 +38,15 @@ struct BenchSummary {
 }
 
 fn main() {
-    let benches: [(&str, fn() -> BenchResult); 6] = [
+    let benches: [(&str, fn() -> BenchResult); 7] = [
         (TransportKind::SyncChannel.label(), || {
             bench_local_fabric(TransportKind::SyncChannel)
         }),
         (TransportKind::UnixStream.label(), || {
             bench_local_fabric(TransportKind::UnixStream)
+        }),
+        (TransportKind::SharedMemoryEvent.label(), || {
+            bench_local_fabric(TransportKind::SharedMemoryEvent)
         }),
         ("unix_stream_batch32", bench_unix_stream_batched),
         ("tcp_loopback", bench_tcp_loopback),

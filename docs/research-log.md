@@ -14,4 +14,9 @@
   - `tcp_loopback`: `39.014 us`
   - `unix_stream`: `18.657 us`
   - `spsc_ring`: `0.376 us`
-- next step is to add a shared-memory-plus-signal transport for a more realistic same-host path
+- `shm_eventfd` transport added for shared memory plus kernel wakeups
+- benchmark result for `shm_eventfd`:
+  - `unix_stream`: `9.418 us`
+  - `shm_eventfd`: `8.578 us`
+  - `spsc_ring`: `0.245 us`
+- conclusion so far: shared memory plus wakeups helps, but the pure ring remains the dominant hot path
