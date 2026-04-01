@@ -1,17 +1,12 @@
-use std::cell::UnsafeCell;
-use std::hint::spin_loop;
+use fabric_core::{LocalEndpoint, TransportKind};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::UnixStream;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::sync_channel;
 use std::thread;
 use std::time::{Duration, Instant};
 
 const ITERATIONS: usize = 200_000;
 const BATCH_SIZE: usize = 32;
-const RING_CAPACITY: usize = 1024;
 const REPEATS: usize = 5;
 
 struct BenchResult {
@@ -44,12 +39,18 @@ struct BenchSummary {
 
 fn main() {
     let benches: [(&str, fn() -> BenchResult); 6] = [
-        ("sync_channel(0)", bench_sync_channel),
-        ("unix_stream", bench_unix_stream),
+        (TransportKind::SyncChannel.label(), || {
+            bench_local_fabric(TransportKind::SyncChannel)
+        }),
+        (TransportKind::UnixStream.label(), || {
+            bench_local_fabric(TransportKind::UnixStream)
+        }),
         ("unix_stream_batch32", bench_unix_stream_batched),
         ("tcp_loopback", bench_tcp_loopback),
         ("tcp_loopback_batch32", bench_tcp_loopback_batched),
-        ("spsc_ring", bench_spsc_ring),
+        (TransportKind::SpscRing.label(), || {
+            bench_local_fabric(TransportKind::SpscRing)
+        }),
     ];
 
     println!(
@@ -92,48 +93,25 @@ fn summarize(name: &'static str, bench_fn: fn() -> BenchResult) -> BenchSummary 
     }
 }
 
-fn bench_sync_channel() -> BenchResult {
-    let (tx_req, rx_req) = sync_channel::<u64>(0);
-    let (tx_ack, rx_ack) = sync_channel::<u64>(0);
-
+fn bench_local_fabric(kind: TransportKind) -> BenchResult {
+    let (mut client, mut server) = LocalEndpoint::pair(kind).unwrap();
     let worker = thread::spawn(move || {
         for _ in 0..ITERATIONS {
-            let value = rx_req.recv().unwrap();
-            tx_ack.send(value).unwrap();
+            let value = server.recv().unwrap();
+            server.send(value).unwrap();
         }
     });
 
     let start = Instant::now();
     for i in 0..ITERATIONS as u64 {
-        tx_req.send(i).unwrap();
-        let ack = rx_ack.recv().unwrap();
+        let ack = client.request(i).unwrap();
         debug_assert_eq!(ack, i);
     }
     let total = start.elapsed();
     worker.join().unwrap();
 
     BenchResult {
-        name: "sync_channel(0)",
-        total,
-    }
-}
-
-fn bench_unix_stream() -> BenchResult {
-    let (mut client, mut server) = UnixStream::pair().unwrap();
-
-    let worker = thread::spawn(move || {
-        let mut buf = [0_u8; 8];
-        for _ in 0..ITERATIONS {
-            server.read_exact(&mut buf).unwrap();
-            server.write_all(&buf).unwrap();
-        }
-    });
-
-    let total = socket_ping_pong(&mut client);
-    worker.join().unwrap();
-
-    BenchResult {
-        name: "unix_stream",
+        name: kind.label(),
         total,
     }
 }
@@ -249,93 +227,4 @@ fn socket_ping_pong_batched<T: Read + Write>(stream: &mut T) -> Duration {
     }
 
     start.elapsed()
-}
-
-#[repr(align(64))]
-struct Aligned<T>(T);
-
-struct RingSlots {
-    slots: Vec<UnsafeCell<u64>>,
-}
-
-unsafe impl Sync for RingSlots {}
-
-struct SpscRing {
-    mask: usize,
-    head: Aligned<AtomicUsize>,
-    tail: Aligned<AtomicUsize>,
-    slots: RingSlots,
-}
-
-unsafe impl Sync for SpscRing {}
-
-impl SpscRing {
-    fn new(capacity: usize) -> Self {
-        assert!(capacity.is_power_of_two());
-        let slots = (0..capacity).map(|_| UnsafeCell::new(0_u64)).collect();
-        Self {
-            mask: capacity - 1,
-            head: Aligned(AtomicUsize::new(0)),
-            tail: Aligned(AtomicUsize::new(0)),
-            slots: RingSlots { slots },
-        }
-    }
-
-    fn push(&self, value: u64) {
-        loop {
-            let head = self.head.0.load(Ordering::Relaxed);
-            let tail = self.tail.0.load(Ordering::Acquire);
-            if head.wrapping_sub(tail) < self.mask + 1 {
-                let index = head & self.mask;
-                unsafe {
-                    *self.slots.slots[index].get() = value;
-                }
-                self.head.0.store(head.wrapping_add(1), Ordering::Release);
-                return;
-            }
-            spin_loop();
-        }
-    }
-
-    fn pop(&self) -> u64 {
-        loop {
-            let tail = self.tail.0.load(Ordering::Relaxed);
-            let head = self.head.0.load(Ordering::Acquire);
-            if tail != head {
-                let index = tail & self.mask;
-                let value = unsafe { *self.slots.slots[index].get() };
-                self.tail.0.store(tail.wrapping_add(1), Ordering::Release);
-                return value;
-            }
-            spin_loop();
-        }
-    }
-}
-
-fn bench_spsc_ring() -> BenchResult {
-    let a_to_b = Arc::new(SpscRing::new(RING_CAPACITY));
-    let b_to_a = Arc::new(SpscRing::new(RING_CAPACITY));
-
-    let worker_in = Arc::clone(&a_to_b);
-    let worker_out = Arc::clone(&b_to_a);
-    let worker = thread::spawn(move || {
-        for _ in 0..ITERATIONS {
-            let value = worker_in.pop();
-            worker_out.push(value);
-        }
-    });
-
-    let start = Instant::now();
-    for i in 0..ITERATIONS as u64 {
-        a_to_b.push(i);
-        let ack = b_to_a.pop();
-        debug_assert_eq!(ack, i);
-    }
-    let total = start.elapsed();
-    worker.join().unwrap();
-
-    BenchResult {
-        name: "spsc_ring",
-        total,
-    }
 }

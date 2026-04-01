@@ -4,16 +4,16 @@
 
 Baseline benchmark harness is in place and has been run on this machine.
 
-## Baseline results
+## Current results
 
 | Transport | Median latency per round trip | Best latency per round trip | Median round trips / sec |
 |---|---:|---:|---:|
-| `sync_channel(0)` | 12.997 us | 12.202 us | 76,942 |
-| `unix_stream` | 14.805 us | 14.307 us | 67,544 |
-| `unix_stream_batch32` | 0.459 us | 0.432 us | 2,177,590 |
-| `tcp_loopback` | 38.456 us | 36.052 us | 26,004 |
-| `tcp_loopback_batch32` | 1.232 us | 1.072 us | 811,803 |
-| `spsc_ring` | 0.336 us | 0.171 us | 2,978,026 |
+| `sync_channel(0)` | 20.953 us | 17.529 us | 47,726 |
+| `unix_stream` | 18.657 us | 17.806 us | 53,598 |
+| `unix_stream_batch32` | 0.586 us | 0.561 us | 1,707,448 |
+| `tcp_loopback` | 39.014 us | 34.833 us | 25,632 |
+| `tcp_loopback_batch32` | 1.325 us | 1.189 us | 754,574 |
+| `spsc_ring` | 0.376 us | 0.359 us | 2,659,088 |
 
 ## Initial conclusions
 
@@ -21,4 +21,4 @@ Baseline benchmark harness is in place and has been run on this machine.
 - Unix sockets are materially cheaper than local TCP
 - batching changes the economics of both Unix sockets and TCP
 - the pure in-process ring is the fastest path measured so far
-- there is enough signal here to justify building a unified transport abstraction next
+- the `fabric-core` abstraction preserves the main performance story after moving beyond handwritten fast paths
