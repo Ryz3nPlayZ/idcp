@@ -7,6 +7,7 @@ members = [
     "crates/idcp-memory",
     "crates/idcp-placement",
     "crates/idcp-pressure",
+    "crates/idcp-system",
     "crates/idcp-bench",
     "crates/idcpd",
 ]

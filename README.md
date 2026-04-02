@@ -34,5 +34,21 @@ A candidate path only counts as a serious win if it demonstrates:
 - `idcp-memory`: page-family discovery and memory representation analysis
 - `idcp-placement`: locality and placement decisions
 - `idcp-pressure`: pressure response planning
+- `idcp-system`: scenario profiles and cross-engine evaluation
 - `idcp-bench`: cross-engine benchmark
 - `idcpd`: daemon-facing planner prototype
+
+## Commands
+
+- `cargo run -p idcp-bench --release`
+- `cargo run -p idcpd --release -- profiles`
+- `cargo run -p idcpd --release -- plan agent-mesh`
+- `cargo run -p idcpd --release -- simulate agent-mesh`
+- `cargo run -p idcpd --release -- bench`
+
+## Current benchmark profiles
+
+- `agent-mesh`
+- `plugin-host`
+- `embedding-farm`
+- `terminal-graph`

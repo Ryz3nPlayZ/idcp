@@ -17,10 +17,7 @@ version = "0.1.0"
 name = "idcp-bench"
 version = "0.1.0"
 dependencies = [
- "idcp-flow",
- "idcp-memory",
- "idcp-placement",
- "idcp-pressure",
+ "idcp-system",
 ]
 
 [[package]]
@@ -46,13 +43,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "idcpd"
+name = "idcp-system"
 version = "0.1.0"
 dependencies = [
  "idcp-flow",
  "idcp-memory",
  "idcp-placement",
  "idcp-pressure",
+]
+
+[[package]]
+name = "idcpd"
+version = "0.1.0"
+dependencies = [
+ "idcp-system",
 ]
 
 [[package]]

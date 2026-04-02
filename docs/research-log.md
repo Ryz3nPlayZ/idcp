@@ -32,10 +32,16 @@
   - `idcp-memory`
   - `idcp-placement`
   - `idcp-pressure`
+  - `idcp-system`
   - `idcp-bench`
   - `idcpd`
-- first cross-engine result:
-  - memory: `54.3%` lower in the modeled workload
-  - flow latency: `65.3%` lower than naive
-  - copy penalty: `43.8%` lower
-  - total modeled score: `1.8x`
+- profile-aware CLI and benchmark added:
+  - `idcpd profiles`
+  - `idcpd plan <profile>`
+  - `idcpd simulate <profile>`
+  - `idcpd bench`
+- multi-profile benchmark results:
+  - `agent-mesh`: `2.18x`
+  - `plugin-host`: `3.17x`
+  - `embedding-farm`: `4.86x`
+  - `terminal-graph`: `2.17x`

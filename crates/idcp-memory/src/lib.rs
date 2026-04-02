@@ -12,6 +12,15 @@ pub struct PageWorkload {
     pub pages: Vec<[u8; PAGE_SIZE]>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ScenarioShape {
+    pub shared_pages: usize,
+    pub family_count: usize,
+    pub variants_per_family: usize,
+    pub unique_pages: usize,
+    pub mutation_stride: usize,
+}
+
 #[derive(Default, Clone, Debug)]
 pub struct MemoryReport {
     pub page_count: usize,
@@ -191,6 +200,33 @@ pub fn mixed_workload() -> PageWorkload {
         name: "mixed",
         pages,
     }
+}
+
+pub fn scenario_workload(name: &'static str, shape: ScenarioShape) -> PageWorkload {
+    let mut pages = Vec::new();
+
+    let shared = page_from_seed(0x5eed, 0x22);
+    for _ in 0..shape.shared_pages {
+        pages.push(shared);
+    }
+
+    for family in 0..shape.family_count as u64 {
+        let base = page_from_seed(1_000 + family, 0x44);
+        pages.push(base);
+        for variant in 0..shape.variants_per_family {
+            let mut page = base;
+            let offset = (variant * shape.mutation_stride) % (PAGE_SIZE - 128);
+            mutate_window(&mut page, offset, 96, family as u8 ^ variant as u8);
+            mutate_window(&mut page, 2048 + ((variant * 17) % 256), 24, variant as u8);
+            pages.push(page);
+        }
+    }
+
+    for idx in 0..shape.unique_pages {
+        pages.push(page_from_seed(50_000 + idx as u64, 0xa7));
+    }
+
+    PageWorkload { name, pages }
 }
 
 fn delta_encoded_size(base: &[u8; PAGE_SIZE], other: &[u8; PAGE_SIZE]) -> usize {

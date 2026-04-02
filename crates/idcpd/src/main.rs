@@ -1,43 +1,118 @@
-use idcp_flow::{FlowHint, Locality, PayloadClass, choose_flow_plan};
-use idcp_memory::{analyze_workload, mixed_workload};
-use idcp_placement::{PlacementRequest, choose_placement};
-use idcp_pressure::{PressureInputs, evaluate_pressure};
+use idcp_system::{ExecutionMode, ScenarioProfile, evaluate};
 
 fn main() {
-    let memory = analyze_workload(&mixed_workload());
-    let flow = choose_flow_plan(FlowHint {
-        locality: Locality::CrossProcess,
-        payload: PayloadClass::Small,
-        latency_sensitive: true,
-    });
-    let placement = choose_placement(PlacementRequest {
-        hot_bytes: 128 * 1024,
-        shared_fraction_percent: 72,
-        latency_sensitive: true,
-    });
-    let pressure = evaluate_pressure(PressureInputs {
-        ram_budget_bytes: 2 * 1024 * 1024,
-        working_set_bytes: memory.raw_bytes + 512 * idcp_memory::PAGE_SIZE,
-        memory_report: memory,
-    });
+    let mut args = std::env::args().skip(1);
+    let command = args.next().unwrap_or_else(|| "plan".to_string());
+    match command.as_str() {
+        "plan" => {
+            let profile = args
+                .next()
+                .as_deref()
+                .and_then(ScenarioProfile::from_slug)
+                .unwrap_or(ScenarioProfile::AgentMesh);
+            print_plan(profile);
+        }
+        "simulate" => {
+            let profile = args
+                .next()
+                .as_deref()
+                .and_then(ScenarioProfile::from_slug)
+                .unwrap_or(ScenarioProfile::AgentMesh);
+            print_simulation(profile);
+        }
+        "bench" => {
+            for profile in ScenarioProfile::all() {
+                print_summary(profile);
+            }
+        }
+        "profiles" => {
+            for profile in ScenarioProfile::all() {
+                println!("{}", profile.slug());
+            }
+        }
+        other => {
+            eprintln!("unknown command: {other}");
+            eprintln!("usage: idcpd [plan <profile>|simulate <profile>|bench|profiles]");
+            std::process::exit(2);
+        }
+    }
+}
 
-    println!("idcpd plan");
+fn print_plan(profile: ScenarioProfile) {
+    let eval = evaluate(profile, ExecutionMode::Idcp);
+    println!("idcpd plan profile={}", profile.slug());
     println!(
         "flow transport={} batching={} zero_copy={}",
-        flow.transport.label(),
-        flow.batching,
-        flow.zero_copy_preferred
+        eval.flow.transport.label(),
+        eval.flow.batching,
+        eval.flow.zero_copy_preferred
     );
     println!(
         "placement zone={:?} affinity_score={} copy_penalty_ns={}",
-        placement.zone, placement.affinity_score, placement.estimated_copy_penalty_ns
+        eval.placement.zone,
+        eval.placement.affinity_score,
+        eval.placement.estimated_copy_penalty_ns
     );
     println!(
         "pressure level={:?} compress_cold={} enable_page_families={} rebalance_work={} estimated_relief_mib={:.2}",
-        pressure.level,
-        pressure.compress_cold,
-        pressure.enable_page_families,
-        pressure.rebalance_work,
-        pressure.estimated_relief_bytes as f64 / 1024.0 / 1024.0
+        eval.pressure.level,
+        eval.pressure.compress_cold,
+        eval.pressure.enable_page_families,
+        eval.pressure.rebalance_work,
+        eval.pressure.estimated_relief_bytes as f64 / 1024.0 / 1024.0
+    );
+    println!(
+        "memory raw_mib={:.2} smart_mib={:.2} savings={:.1}%",
+        eval.memory.raw_bytes as f64 / 1024.0 / 1024.0,
+        eval.memory.estimated_bytes as f64 / 1024.0 / 1024.0,
+        eval.memory.savings_percent()
+    );
+}
+
+fn print_summary(profile: ScenarioProfile) {
+    let naive = evaluate(profile, ExecutionMode::Naive);
+    let idcp = evaluate(profile, ExecutionMode::Idcp);
+    let improvement = idcp.improvement_over(&naive);
+    println!(
+        "{} mem={:.1}% flow={:.1}% copy={:.1}% score={:.2}x",
+        profile.slug(),
+        improvement.memory_percent,
+        improvement.flow_percent,
+        improvement.copy_percent,
+        improvement.score_multiplier
+    );
+}
+
+fn print_simulation(profile: ScenarioProfile) {
+    let naive = evaluate(profile, ExecutionMode::Naive);
+    let idcp = evaluate(profile, ExecutionMode::Idcp);
+    let improvement = idcp.improvement_over(&naive);
+    println!("idcp simulation profile={}", profile.slug());
+    println!(
+        "{:<10} {:>10} {:>10} {:>12} {:>10}",
+        "mode", "mem_mib", "flow_ns", "copy_penalty", "score"
+    );
+    println!(
+        "{:<10} {:>10.2} {:>10} {:>12} {:>10}",
+        "naive",
+        naive.memory_bytes as f64 / 1024.0 / 1024.0,
+        naive.flow_latency_ns,
+        naive.copy_penalty_ns,
+        naive.total_score
+    );
+    println!(
+        "{:<10} {:>10.2} {:>10} {:>12} {:>10}",
+        "idcp",
+        idcp.memory_bytes as f64 / 1024.0 / 1024.0,
+        idcp.flow_latency_ns,
+        idcp.copy_penalty_ns,
+        idcp.total_score
+    );
+    println!(
+        "delta mem={:.1}% flow={:.1}% copy={:.1}% score={:.2}x",
+        improvement.memory_percent,
+        improvement.flow_percent,
+        improvement.copy_percent,
+        improvement.score_multiplier
     );
 }
