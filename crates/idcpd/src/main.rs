@@ -1,4 +1,4 @@
-use idcp_system::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured};
+use idcp_system::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured, execute_runtime};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -28,6 +28,14 @@ fn main() {
                 .unwrap_or(ScenarioProfile::AgentMesh);
             print_simulation(profile);
         }
+        "run" => {
+            let profile = args
+                .next()
+                .as_deref()
+                .and_then(ScenarioProfile::from_slug)
+                .unwrap_or(ScenarioProfile::AgentMesh);
+            print_runtime(profile);
+        }
         "bench" => {
             for profile in ScenarioProfile::all() {
                 print_summary(profile);
@@ -41,7 +49,7 @@ fn main() {
         other => {
             eprintln!("unknown command: {other}");
             eprintln!(
-                "usage: idcpd [plan <profile>|measure <profile>|simulate <profile>|bench|profiles]"
+                "usage: idcpd [plan <profile>|measure <profile>|simulate <profile>|run <profile>|bench|profiles]"
             );
             std::process::exit(2);
         }
@@ -136,4 +144,32 @@ fn print_simulation(profile: ScenarioProfile) {
         improvement.copy_percent,
         improvement.score_multiplier
     );
+}
+
+fn print_runtime(profile: ScenarioProfile) {
+    let naive = execute_runtime(profile, ExecutionMode::Naive);
+    let idcp = execute_runtime(profile, ExecutionMode::Idcp);
+    println!("idcp runtime profile={}", profile.slug());
+    println!(
+        "{:<10} {:>12} {:>14} {:>14}",
+        "mode", "messages", "latency_ns", "throughput"
+    );
+    if let Some(result) = naive {
+        println!(
+            "{:<10} {:>12} {:>14} {:>14}",
+            "naive",
+            result.processed_messages,
+            result.end_to_end_latency_ns,
+            result.throughput_msgs_per_sec
+        );
+    }
+    if let Some(result) = idcp {
+        println!(
+            "{:<10} {:>12} {:>14} {:>14}",
+            "idcp",
+            result.processed_messages,
+            result.end_to_end_latency_ns,
+            result.throughput_msgs_per_sec
+        );
+    }
 }

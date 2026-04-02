@@ -30,3 +30,29 @@ terminal-graph      53.8%     40.4%     43.8%      8107        2.25
 This is still a model-driven benchmark, not a full production runtime measurement, but it shows the intended system shape:
 
 > IDCP is not one optimization. It is a coordinated same-machine control fabric.
+
+## Live runtime samples
+
+`idcpd run embedding-farm`
+
+```text
+idcp runtime profile=embedding-farm
+mode           messages     latency_ns     throughput
+naive             12000          31427          31819
+idcp              12000          26847          37247
+```
+
+`idcpd run agent-mesh`
+
+```text
+idcp runtime profile=agent-mesh
+mode           messages     latency_ns     throughput
+naive             20000          27607          36222
+idcp              20000          27162          36815
+```
+
+Interpretation:
+
+- the runtime path now executes a real multi-stage worker pipeline
+- the wins are smaller than the planner-only numbers, which is expected and healthier
+- `embedding-farm` benefits more than `agent-mesh`, which matches the earlier benchmark signal

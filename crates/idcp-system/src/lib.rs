@@ -3,6 +3,7 @@ use idcp_flow::{FlowHint, FlowPlan, Locality, PayloadClass, choose_flow_plan};
 use idcp_memory::{MemoryReport, ScenarioShape, analyze_workload, scenario_workload};
 use idcp_placement::{PlacementDecision, PlacementRequest, choose_placement};
 use idcp_pressure::{PressureInputs, PressurePlan, evaluate_pressure};
+use std::sync::mpsc::sync_channel;
 use std::thread;
 use std::time::Instant;
 
@@ -152,6 +153,13 @@ pub struct ScenarioEvaluation {
     pub total_score: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct RuntimeResult {
+    pub processed_messages: usize,
+    pub end_to_end_latency_ns: u64,
+    pub throughput_msgs_per_sec: u64,
+}
+
 impl ScenarioEvaluation {
     pub fn improvement_over(&self, base: &ScenarioEvaluation) -> ScenarioImprovement {
         ScenarioImprovement {
@@ -255,6 +263,56 @@ pub fn evaluate_measured(profile: ScenarioProfile, mode: ExecutionMode) -> Scena
     eval
 }
 
+pub fn execute_runtime(profile: ScenarioProfile, mode: ExecutionMode) -> Option<RuntimeResult> {
+    let eval = evaluate_measured(profile, mode);
+    let iterations = eval.spec.message_count.clamp(2_000, 20_000);
+
+    let (mut source_to_stage1, mut stage1_from_source) =
+        LocalEndpoint::pair(eval.flow.transport).ok()?;
+    let (mut stage1_to_stage2, mut stage2_from_stage1) =
+        LocalEndpoint::pair(eval.flow.transport).ok()?;
+    let (ack_tx, ack_rx) = sync_channel::<u64>(0);
+
+    let stage1 = thread::spawn(move || {
+        for _ in 0..iterations {
+            let value = stage1_from_source.recv().ok()?;
+            stage1_from_source.send(value.wrapping_add(1)).ok()?;
+            let forwarded = stage1_from_source.recv().ok()?;
+            stage1_to_stage2.send(forwarded.wrapping_add(1)).ok()?;
+        }
+        Some(())
+    });
+
+    let stage2 = thread::spawn(move || {
+        for _ in 0..iterations {
+            let value = stage2_from_stage1.recv().ok()?;
+            ack_tx.send(value.wrapping_add(1)).ok()?;
+        }
+        Some(())
+    });
+
+    let start = Instant::now();
+    for i in 0..iterations as u64 {
+        source_to_stage1.send(i).ok()?;
+        let bounced = source_to_stage1.recv().ok()?;
+        source_to_stage1.send(bounced).ok()?;
+        let final_value = ack_rx.recv().ok()?;
+        if final_value != i.wrapping_add(3) {
+            return None;
+        }
+    }
+    let elapsed = start.elapsed();
+
+    stage1.join().ok()??;
+    stage2.join().ok()??;
+
+    Some(RuntimeResult {
+        processed_messages: iterations,
+        end_to_end_latency_ns: elapsed.as_nanos() as u64 / iterations as u64,
+        throughput_msgs_per_sec: (iterations as f64 / elapsed.as_secs_f64()) as u64,
+    })
+}
+
 fn modeled_flow_latency_ns(plan: FlowPlan, message_count: usize) -> u64 {
     let base = match plan.transport {
         idcp_flow::TransportKind::SpscRing => 245,
@@ -300,7 +358,7 @@ fn percent_better(base: f64, improved: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured};
+    use super::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured, execute_runtime};
 
     #[test]
     fn idcp_beats_naive_on_agent_mesh() {
@@ -315,5 +373,13 @@ mod tests {
     fn measured_evaluation_produces_positive_flow_latency() {
         let eval = evaluate_measured(ScenarioProfile::PluginHost, ExecutionMode::Idcp);
         assert!(eval.flow_latency_ns > 0);
+    }
+
+    #[test]
+    fn runtime_execution_processes_messages() {
+        let runtime = execute_runtime(ScenarioProfile::TerminalGraph, ExecutionMode::Idcp).unwrap();
+        assert!(runtime.processed_messages >= 2_000);
+        assert!(runtime.end_to_end_latency_ns > 0);
+        assert!(runtime.throughput_msgs_per_sec > 0);
     }
 }

@@ -47,3 +47,8 @@
   - `embedding-farm`: `4.67x`
   - `terminal-graph`: `2.25x`
 - scenario system now has a live transport measurement path instead of only modeled flow latency
+- live runtime pipeline added through `idcpd run <profile>`
+- first live runtime samples:
+  - `embedding-farm`: latency `31427 -> 26847` ns, throughput `31819 -> 37247`
+  - `agent-mesh`: latency `27607 -> 27162` ns, throughput `36222 -> 36815`
+- conclusion: end-to-end wins are real but smaller than planner-only estimates, which is a healthier product signal
