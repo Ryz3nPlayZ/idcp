@@ -38,10 +38,12 @@
 - profile-aware CLI and benchmark added:
   - `idcpd profiles`
   - `idcpd plan <profile>`
+  - `idcpd measure <profile>`
   - `idcpd simulate <profile>`
   - `idcpd bench`
 - multi-profile benchmark results:
-  - `agent-mesh`: `2.18x`
-  - `plugin-host`: `3.17x`
-  - `embedding-farm`: `4.86x`
-  - `terminal-graph`: `2.17x`
+  - `agent-mesh`: `2.24x`
+  - `plugin-host`: `3.25x`
+  - `embedding-farm`: `4.67x`
+  - `terminal-graph`: `2.25x`
+- scenario system now has a live transport measurement path instead of only modeled flow latency

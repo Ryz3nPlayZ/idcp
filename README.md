@@ -43,6 +43,7 @@ A candidate path only counts as a serious win if it demonstrates:
 - `cargo run -p idcp-bench --release`
 - `cargo run -p idcpd --release -- profiles`
 - `cargo run -p idcpd --release -- plan agent-mesh`
+- `cargo run -p idcpd --release -- measure agent-mesh`
 - `cargo run -p idcpd --release -- simulate agent-mesh`
 - `cargo run -p idcpd --release -- bench`
 

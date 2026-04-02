@@ -9,6 +9,7 @@ idcp-flow = { path = "../idcp-flow" }
 idcp-memory = { path = "../idcp-memory" }
 idcp-placement = { path = "../idcp-placement" }
 idcp-pressure = { path = "../idcp-pressure" }
+fabric-core = { path = "../fabric-core" }
 
 [lib]
 path = "src/lib.rs"

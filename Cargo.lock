@@ -46,6 +46,7 @@ dependencies = [
 name = "idcp-system"
 version = "0.1.0"
 dependencies = [
+ "fabric-core",
  "idcp-flow",
  "idcp-memory",
  "idcp-placement",

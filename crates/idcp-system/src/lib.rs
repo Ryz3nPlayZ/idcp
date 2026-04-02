@@ -1,7 +1,10 @@
+use fabric_core::LocalEndpoint;
 use idcp_flow::{FlowHint, FlowPlan, Locality, PayloadClass, choose_flow_plan};
 use idcp_memory::{MemoryReport, ScenarioShape, analyze_workload, scenario_workload};
 use idcp_placement::{PlacementDecision, PlacementRequest, choose_placement};
 use idcp_pressure::{PressureInputs, PressurePlan, evaluate_pressure};
+use std::thread;
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScenarioProfile {
@@ -216,7 +219,7 @@ pub fn evaluate(profile: ScenarioProfile, mode: ExecutionMode) -> ScenarioEvalua
         ExecutionMode::Idcp => memory.raw_bytes,
     };
 
-    let flow_latency_ns = flow_latency_ns(flow, spec.message_count);
+    let flow_latency_ns = modeled_flow_latency_ns(flow, spec.message_count);
     let copy_penalty_ns = placement.estimated_copy_penalty_ns;
     let mut total_score = aggregate_score(memory_bytes, flow_latency_ns, copy_penalty_ns);
     if matches!(mode, ExecutionMode::Idcp) && pressure.rebalance_work {
@@ -237,7 +240,22 @@ pub fn evaluate(profile: ScenarioProfile, mode: ExecutionMode) -> ScenarioEvalua
     }
 }
 
-fn flow_latency_ns(plan: FlowPlan, message_count: usize) -> u64 {
+pub fn evaluate_measured(profile: ScenarioProfile, mode: ExecutionMode) -> ScenarioEvaluation {
+    let mut eval = evaluate(profile, mode);
+    eval.flow_latency_ns = measure_flow_latency_ns(eval.flow, eval.spec.message_count)
+        .unwrap_or_else(|| modeled_flow_latency_ns(eval.flow, eval.spec.message_count));
+    eval.total_score = aggregate_score(
+        eval.memory_bytes,
+        eval.flow_latency_ns,
+        eval.copy_penalty_ns,
+    );
+    if matches!(mode, ExecutionMode::Idcp) && eval.pressure.rebalance_work {
+        eval.total_score += eval.total_score / 8;
+    }
+    eval
+}
+
+fn modeled_flow_latency_ns(plan: FlowPlan, message_count: usize) -> u64 {
     let base = match plan.transport {
         idcp_flow::TransportKind::SpscRing => 245,
         idcp_flow::TransportKind::SharedMemoryEvent => 8_578,
@@ -246,6 +264,29 @@ fn flow_latency_ns(plan: FlowPlan, message_count: usize) -> u64 {
     };
     let batching_divisor = plan.batching.max(1) as u64;
     base / batching_divisor + (message_count as u64 / 10_000)
+}
+
+fn measure_flow_latency_ns(plan: FlowPlan, message_count: usize) -> Option<u64> {
+    let iterations = message_count.clamp(1_000, 10_000);
+    let (mut client, mut server) = LocalEndpoint::pair(plan.transport).ok()?;
+    let worker = thread::spawn(move || {
+        for _ in 0..iterations {
+            let value = server.recv().ok()?;
+            server.send(value).ok()?;
+        }
+        Some(())
+    });
+
+    let start = Instant::now();
+    for i in 0..iterations as u64 {
+        let ack = client.request(i).ok()?;
+        if ack != i {
+            return None;
+        }
+    }
+    let elapsed = start.elapsed();
+    worker.join().ok()??;
+    Some((elapsed.as_nanos() as u64 / iterations as u64) / plan.batching.max(1) as u64)
 }
 
 fn aggregate_score(memory_bytes: usize, flow_latency_ns: u64, copy_penalty_ns: u64) -> u64 {
@@ -259,7 +300,7 @@ fn percent_better(base: f64, improved: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionMode, ScenarioProfile, evaluate};
+    use super::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured};
 
     #[test]
     fn idcp_beats_naive_on_agent_mesh() {
@@ -268,5 +309,11 @@ mod tests {
         let improvement = idcp.improvement_over(&naive);
         assert!(improvement.memory_percent > 20.0);
         assert!(improvement.score_multiplier > 1.2);
+    }
+
+    #[test]
+    fn measured_evaluation_produces_positive_flow_latency() {
+        let eval = evaluate_measured(ScenarioProfile::PluginHost, ExecutionMode::Idcp);
+        assert!(eval.flow_latency_ns > 0);
     }
 }

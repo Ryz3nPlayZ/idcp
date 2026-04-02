@@ -1,4 +1,4 @@
-use idcp_system::{ExecutionMode, ScenarioProfile, evaluate};
+use idcp_system::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -10,7 +10,15 @@ fn main() {
                 .as_deref()
                 .and_then(ScenarioProfile::from_slug)
                 .unwrap_or(ScenarioProfile::AgentMesh);
-            print_plan(profile);
+            print_plan(profile, false);
+        }
+        "measure" => {
+            let profile = args
+                .next()
+                .as_deref()
+                .and_then(ScenarioProfile::from_slug)
+                .unwrap_or(ScenarioProfile::AgentMesh);
+            print_plan(profile, true);
         }
         "simulate" => {
             let profile = args
@@ -32,15 +40,25 @@ fn main() {
         }
         other => {
             eprintln!("unknown command: {other}");
-            eprintln!("usage: idcpd [plan <profile>|simulate <profile>|bench|profiles]");
+            eprintln!(
+                "usage: idcpd [plan <profile>|measure <profile>|simulate <profile>|bench|profiles]"
+            );
             std::process::exit(2);
         }
     }
 }
 
-fn print_plan(profile: ScenarioProfile) {
-    let eval = evaluate(profile, ExecutionMode::Idcp);
-    println!("idcpd plan profile={}", profile.slug());
+fn print_plan(profile: ScenarioProfile, measured: bool) {
+    let eval = if measured {
+        evaluate_measured(profile, ExecutionMode::Idcp)
+    } else {
+        evaluate(profile, ExecutionMode::Idcp)
+    };
+    println!(
+        "idcpd {} profile={}",
+        if measured { "measure" } else { "plan" },
+        profile.slug()
+    );
     println!(
         "flow transport={} batching={} zero_copy={}",
         eval.flow.transport.label(),
@@ -67,25 +85,28 @@ fn print_plan(profile: ScenarioProfile) {
         eval.memory.estimated_bytes as f64 / 1024.0 / 1024.0,
         eval.memory.savings_percent()
     );
+    println!("flow_latency_ns={}", eval.flow_latency_ns);
 }
 
 fn print_summary(profile: ScenarioProfile) {
-    let naive = evaluate(profile, ExecutionMode::Naive);
-    let idcp = evaluate(profile, ExecutionMode::Idcp);
+    let naive = evaluate_measured(profile, ExecutionMode::Naive);
+    let idcp = evaluate_measured(profile, ExecutionMode::Idcp);
     let improvement = idcp.improvement_over(&naive);
     println!(
-        "{} mem={:.1}% flow={:.1}% copy={:.1}% score={:.2}x",
+        "{} mem={:.1}% flow={:.1}% copy={:.1}% naive_ns={} idcp_ns={} score={:.2}x",
         profile.slug(),
         improvement.memory_percent,
         improvement.flow_percent,
         improvement.copy_percent,
+        naive.flow_latency_ns,
+        idcp.flow_latency_ns,
         improvement.score_multiplier
     );
 }
 
 fn print_simulation(profile: ScenarioProfile) {
-    let naive = evaluate(profile, ExecutionMode::Naive);
-    let idcp = evaluate(profile, ExecutionMode::Idcp);
+    let naive = evaluate_measured(profile, ExecutionMode::Naive);
+    let idcp = evaluate_measured(profile, ExecutionMode::Idcp);
     let improvement = idcp.improvement_over(&naive);
     println!("idcp simulation profile={}", profile.slug());
     println!(
