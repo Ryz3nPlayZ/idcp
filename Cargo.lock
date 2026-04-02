@@ -14,5 +14,47 @@ name = "fabric-core"
 version = "0.1.0"
 
 [[package]]
+name = "idcp-bench"
+version = "0.1.0"
+dependencies = [
+ "idcp-flow",
+ "idcp-memory",
+ "idcp-placement",
+ "idcp-pressure",
+]
+
+[[package]]
+name = "idcp-flow"
+version = "0.1.0"
+dependencies = [
+ "fabric-core",
+]
+
+[[package]]
+name = "idcp-memory"
+version = "0.1.0"
+
+[[package]]
+name = "idcp-placement"
+version = "0.1.0"
+
+[[package]]
+name = "idcp-pressure"
+version = "0.1.0"
+dependencies = [
+ "idcp-memory",
+]
+
+[[package]]
+name = "idcpd"
+version = "0.1.0"
+dependencies = [
+ "idcp-flow",
+ "idcp-memory",
+ "idcp-placement",
+ "idcp-pressure",
+]
+
+[[package]]
 name = "memory-lab"
 version = "0.1.0"

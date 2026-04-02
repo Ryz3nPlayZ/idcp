@@ -3,6 +3,12 @@ members = [
     "crates/fabric-core",
     "crates/fabric-bench",
     "crates/memory-lab",
+    "crates/idcp-flow",
+    "crates/idcp-memory",
+    "crates/idcp-placement",
+    "crates/idcp-pressure",
+    "crates/idcp-bench",
+    "crates/idcpd",
 ]
 resolver = "3"
 

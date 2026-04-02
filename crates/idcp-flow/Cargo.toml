@@ -1,0 +1,9 @@
+[package]
+name = "idcp-flow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fabric-core = { path = "../fabric-core" }
+

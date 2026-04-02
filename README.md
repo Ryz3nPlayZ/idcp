@@ -1,17 +1,15 @@
 # IDCP
 
-IDCP is a research repo for a locality-aware communication plane.
+IDCP is a research repo for an intra-device communication and control fabric.
 
-The working thesis is simple: local software often pays unnecessary transport overhead by treating same-process and same-host communication like remote RPC. This repo exists to measure that waste, prototype cheaper transports, and determine whether a reusable runtime is worth building.
-
-The newer line of work in this repo goes deeper: memory itself may be too dumb. If identical, near-identical, and compressible pages can be discovered and represented more intelligently, the same hardware could behave like better hardware.
+The thesis is broader now: commodity computers waste capability because communication, memory, placement, and pressure response are handled as separate generic subsystems. IDCP explores whether coordinating them as one same-machine fabric can make the same hardware do materially more with less.
 
 ## Initial scope
 
 - benchmark local communication paths honestly
 - compare transport shape and batching strategies
-- prototype a stable local messaging API
 - explore discovery-grade memory representations
+- coordinate flow, memory, placement, and pressure under one model
 - record decisions with hard numbers
 
 ## Non-goals for the first phase
@@ -28,3 +26,13 @@ A candidate path only counts as a serious win if it demonstrates:
 - at least `5x` lower median latency than local loopback TCP
 - at least `2x` lower median latency than Unix sockets
 - equivalent correctness on the same workload
+
+## Current shape
+
+- `fabric-core`: low-level transport substrate
+- `idcp-flow`: flow planning across same-machine localities
+- `idcp-memory`: page-family discovery and memory representation analysis
+- `idcp-placement`: locality and placement decisions
+- `idcp-pressure`: pressure response planning
+- `idcp-bench`: cross-engine benchmark
+- `idcpd`: daemon-facing planner prototype

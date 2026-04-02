@@ -27,3 +27,15 @@
   - `near_dups`: `66.8%` estimated savings
   - `mixed`: `54.3%` estimated savings
 - conclusion so far: near-duplicate pages are promising enough to justify a deeper page-family runtime
+- repo restructured around engine crates:
+  - `idcp-flow`
+  - `idcp-memory`
+  - `idcp-placement`
+  - `idcp-pressure`
+  - `idcp-bench`
+  - `idcpd`
+- first cross-engine result:
+  - memory: `54.3%` lower in the modeled workload
+  - flow latency: `65.3%` lower than naive
+  - copy penalty: `43.8%` lower
+  - total modeled score: `1.8x`

@@ -1,0 +1,12 @@
+[package]
+name = "idcpd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+idcp-flow = { path = "../idcp-flow" }
+idcp-memory = { path = "../idcp-memory" }
+idcp-placement = { path = "../idcp-placement" }
+idcp-pressure = { path = "../idcp-pressure" }
+
