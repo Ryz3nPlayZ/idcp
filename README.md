@@ -214,6 +214,11 @@ So the repo is product-shaped and runnable, but it is still a prototype controll
 ## Where to read next
 
 - [docs/v1-v5.md](/home/zemul/idcp/docs/v1-v5.md)
+- [docs/architecture.md](/home/zemul/idcp/docs/architecture.md)
+- [docs/roadmap.md](/home/zemul/idcp/docs/roadmap.md)
+- [docs/handoff.md](/home/zemul/idcp/docs/handoff.md)
+- [docs/operations.md](/home/zemul/idcp/docs/operations.md)
+- [docs/contributing.md](/home/zemul/idcp/docs/contributing.md)
 - [docs/idcp-bench-results.md](/home/zemul/idcp/docs/idcp-bench-results.md)
 - [docs/memory-discovery.md](/home/zemul/idcp/docs/memory-discovery.md)
 - [docs/finish-line.md](/home/zemul/idcp/docs/finish-line.md)
