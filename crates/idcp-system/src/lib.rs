@@ -2,9 +2,10 @@ use fabric_core::LocalEndpoint;
 use idcp_flow::{FlowHint, FlowPlan, Locality, PayloadClass, choose_flow_plan};
 use idcp_memory::{MemoryReport, ScenarioShape, analyze_workload, scenario_workload};
 use idcp_placement::{PlacementDecision, PlacementRequest, choose_placement};
-use idcp_pressure::{PressureInputs, PressurePlan, evaluate_pressure};
+use idcp_pressure::{PressureInputs, PressureLevel, PressurePlan, evaluate_pressure};
 use std::sync::mpsc::sync_channel;
 use std::thread;
+use std::time::Duration;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -160,6 +161,43 @@ pub struct RuntimeResult {
     pub throughput_msgs_per_sec: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControlAction {
+    Hold,
+    FavorZeroCopy,
+    FavorBatching,
+    RebalanceForPressure,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ControllerConfig {
+    pub profile: ScenarioProfile,
+    pub ticks: usize,
+    pub interval_ms: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ControllerSnapshot {
+    pub tick: usize,
+    pub profile: ScenarioProfile,
+    pub naive: ScenarioEvaluation,
+    pub idcp: ScenarioEvaluation,
+    pub runtime_naive: RuntimeResult,
+    pub runtime_idcp: RuntimeResult,
+    pub improvement: ScenarioImprovement,
+    pub action: ControlAction,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ControllerSummary {
+    pub avg_memory_percent: f64,
+    pub avg_flow_percent: f64,
+    pub avg_copy_percent: f64,
+    pub avg_score_multiplier: f64,
+    pub avg_runtime_latency_percent: f64,
+    pub avg_runtime_throughput_percent: f64,
+}
+
 impl ScenarioEvaluation {
     pub fn improvement_over(&self, base: &ScenarioEvaluation) -> ScenarioImprovement {
         ScenarioImprovement {
@@ -313,6 +351,148 @@ pub fn execute_runtime(profile: ScenarioProfile, mode: ExecutionMode) -> Option<
     })
 }
 
+pub fn run_controller(config: ControllerConfig) -> Vec<ControllerSnapshot> {
+    let ticks = config.ticks.max(1);
+    let mut snapshots = Vec::with_capacity(ticks);
+    for tick in 0..ticks {
+        let naive = evaluate_measured(config.profile, ExecutionMode::Naive);
+        let idcp = evaluate_measured(config.profile, ExecutionMode::Idcp);
+        let runtime_naive =
+            execute_runtime(config.profile, ExecutionMode::Naive).unwrap_or(RuntimeResult {
+                processed_messages: 0,
+                end_to_end_latency_ns: 0,
+                throughput_msgs_per_sec: 0,
+            });
+        let runtime_idcp =
+            execute_runtime(config.profile, ExecutionMode::Idcp).unwrap_or(RuntimeResult {
+                processed_messages: 0,
+                end_to_end_latency_ns: 0,
+                throughput_msgs_per_sec: 0,
+            });
+        let improvement = idcp.improvement_over(&naive);
+        let action = choose_action(&idcp, &runtime_naive, &runtime_idcp);
+        snapshots.push(ControllerSnapshot {
+            tick: tick + 1,
+            profile: config.profile,
+            naive,
+            idcp,
+            runtime_naive,
+            runtime_idcp,
+            improvement,
+            action,
+        });
+        if config.interval_ms > 0 && tick + 1 != ticks {
+            thread::sleep(Duration::from_millis(config.interval_ms));
+        }
+    }
+    snapshots
+}
+
+pub fn summarize_controller(snapshots: &[ControllerSnapshot]) -> ControllerSummary {
+    if snapshots.is_empty() {
+        return ControllerSummary::default();
+    }
+    let count = snapshots.len() as f64;
+    let mut summary = ControllerSummary::default();
+    for snapshot in snapshots {
+        summary.avg_memory_percent += snapshot.improvement.memory_percent;
+        summary.avg_flow_percent += snapshot.improvement.flow_percent;
+        summary.avg_copy_percent += snapshot.improvement.copy_percent;
+        summary.avg_score_multiplier += snapshot.improvement.score_multiplier;
+        summary.avg_runtime_latency_percent += percent_better(
+            snapshot.runtime_naive.end_to_end_latency_ns as f64,
+            snapshot.runtime_idcp.end_to_end_latency_ns as f64,
+        );
+        summary.avg_runtime_throughput_percent += percent_better(
+            snapshot.runtime_naive.throughput_msgs_per_sec.max(1) as f64,
+            snapshot.runtime_idcp.throughput_msgs_per_sec.max(1) as f64,
+        ) * -1.0;
+    }
+    summary.avg_memory_percent /= count;
+    summary.avg_flow_percent /= count;
+    summary.avg_copy_percent /= count;
+    summary.avg_score_multiplier /= count;
+    summary.avg_runtime_latency_percent /= count;
+    summary.avg_runtime_throughput_percent /= count;
+    summary
+}
+
+pub fn render_report_markdown(
+    config: ControllerConfig,
+    snapshots: &[ControllerSnapshot],
+) -> String {
+    use std::fmt::Write;
+
+    let summary = summarize_controller(snapshots);
+    let mut out = String::new();
+    let _ = writeln!(out, "# IDCP Controller Report");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "- profile: `{}`", config.profile.slug());
+    let _ = writeln!(out, "- ticks: `{}`", snapshots.len());
+    let _ = writeln!(out, "- interval_ms: `{}`", config.interval_ms);
+    let _ = writeln!(out);
+    let _ = writeln!(out, "## Summary");
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "- average modeled memory reduction: `{:.1}%`",
+        summary.avg_memory_percent
+    );
+    let _ = writeln!(
+        out,
+        "- average measured flow reduction: `{:.1}%`",
+        summary.avg_flow_percent
+    );
+    let _ = writeln!(
+        out,
+        "- average copy-penalty reduction: `{:.1}%`",
+        summary.avg_copy_percent
+    );
+    let _ = writeln!(
+        out,
+        "- average aggregate score multiplier: `{:.2}x`",
+        summary.avg_score_multiplier
+    );
+    let _ = writeln!(
+        out,
+        "- average runtime latency reduction: `{:.1}%`",
+        summary.avg_runtime_latency_percent
+    );
+    let _ = writeln!(
+        out,
+        "- average runtime throughput increase: `{:.1}%`",
+        summary.avg_runtime_throughput_percent
+    );
+    let _ = writeln!(out);
+    let _ = writeln!(out, "## Ticks");
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "| tick | action | mem% | flow% | copy% | score_x | naive_ns | idcp_ns | naive_tput | idcp_tput |"
+    );
+    let _ = writeln!(
+        out,
+        "| ---: | :----- | ---: | ----: | ----: | ------: | -------: | ------: | ---------: | --------: |"
+    );
+    for snapshot in snapshots {
+        let _ = writeln!(
+            out,
+            "| {} | `{:?}` | {:.1} | {:.1} | {:.1} | {:.2} | {} | {} | {} | {} |",
+            snapshot.tick,
+            snapshot.action,
+            snapshot.improvement.memory_percent,
+            snapshot.improvement.flow_percent,
+            snapshot.improvement.copy_percent,
+            snapshot.improvement.score_multiplier,
+            snapshot.runtime_naive.end_to_end_latency_ns,
+            snapshot.runtime_idcp.end_to_end_latency_ns,
+            snapshot.runtime_naive.throughput_msgs_per_sec,
+            snapshot.runtime_idcp.throughput_msgs_per_sec,
+        );
+    }
+    out
+}
+
 fn modeled_flow_latency_ns(plan: FlowPlan, message_count: usize) -> u64 {
     let base = match plan.transport {
         idcp_flow::TransportKind::SpscRing => 245,
@@ -356,9 +536,40 @@ fn percent_better(base: f64, improved: f64) -> f64 {
     100.0 * (base - improved) / base
 }
 
+fn choose_action(
+    eval: &ScenarioEvaluation,
+    runtime_naive: &RuntimeResult,
+    runtime_idcp: &RuntimeResult,
+) -> ControlAction {
+    if matches!(eval.pressure.level, PressureLevel::Critical) && eval.pressure.rebalance_work {
+        return ControlAction::RebalanceForPressure;
+    }
+    let runtime_latency_gain = percent_better(
+        runtime_naive.end_to_end_latency_ns.max(1) as f64,
+        runtime_idcp.end_to_end_latency_ns.max(1) as f64,
+    );
+    if eval.flow.batching > 1 && runtime_latency_gain < 5.0 {
+        return ControlAction::FavorBatching;
+    }
+    if eval.flow.zero_copy_preferred
+        || matches!(
+            eval.placement.zone,
+            idcp_placement::ExecutionZone::SharedLocal
+                | idcp_placement::ExecutionZone::CoreLocal
+                | idcp_placement::ExecutionZone::L1Hot
+        )
+    {
+        return ControlAction::FavorZeroCopy;
+    }
+    ControlAction::Hold
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured, execute_runtime};
+    use super::{
+        ControlAction, ControllerConfig, ExecutionMode, ScenarioProfile, evaluate,
+        evaluate_measured, execute_runtime, render_report_markdown, run_controller,
+    };
 
     #[test]
     fn idcp_beats_naive_on_agent_mesh() {
@@ -381,5 +592,43 @@ mod tests {
         assert!(runtime.processed_messages >= 2_000);
         assert!(runtime.end_to_end_latency_ns > 0);
         assert!(runtime.throughput_msgs_per_sec > 0);
+    }
+
+    #[test]
+    fn controller_produces_snapshots_and_actions() {
+        let snapshots = run_controller(ControllerConfig {
+            profile: ScenarioProfile::EmbeddingFarm,
+            ticks: 2,
+            interval_ms: 0,
+        });
+        assert_eq!(snapshots.len(), 2);
+        assert!(matches!(
+            snapshots[0].action,
+            ControlAction::FavorBatching
+                | ControlAction::FavorZeroCopy
+                | ControlAction::RebalanceForPressure
+                | ControlAction::Hold
+        ));
+        assert!(snapshots[0].runtime_idcp.processed_messages > 0);
+    }
+
+    #[test]
+    fn report_contains_summary_and_ticks() {
+        let snapshots = run_controller(ControllerConfig {
+            profile: ScenarioProfile::AgentMesh,
+            ticks: 1,
+            interval_ms: 0,
+        });
+        let report = render_report_markdown(
+            ControllerConfig {
+                profile: ScenarioProfile::AgentMesh,
+                ticks: 1,
+                interval_ms: 0,
+            },
+            &snapshots,
+        );
+        assert!(report.contains("# IDCP Controller Report"));
+        assert!(report.contains("## Summary"));
+        assert!(report.contains("| tick | action |"));
     }
 }
