@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700">
+<rect x="0" y="0" width="1200" height="700" fill="white"/>
+<text x="600.0" y="35" text-anchor="middle" font-size="24" font-family="sans-serif">IDCP vs Conventional: runtime improvement (%)</text>
+<line x1="90" y1="70" x2="90" y2="530" stroke="black" stroke-width="1"/>
+<line x1="90" y1="208.65" x2="1170" y2="208.65" stroke="#777" stroke-width="1"/>
+<line x1="85" y1="530.00" x2="90" y2="530.00" stroke="black"/>
+<text x="80" y="534.00" text-anchor="end" font-size="12" font-family="monospace">-29.5</text>
+<line x1="85" y1="438.00" x2="90" y2="438.00" stroke="black"/>
+<text x="80" y="442.00" text-anchor="end" font-size="12" font-family="monospace">-21.1</text>
+<line x1="85" y1="346.00" x2="90" y2="346.00" stroke="black"/>
+<text x="80" y="350.00" text-anchor="end" font-size="12" font-family="monospace">-12.6</text>
+<line x1="85" y1="254.00" x2="90" y2="254.00" stroke="black"/>
+<text x="80" y="258.00" text-anchor="end" font-size="12" font-family="monospace">-4.2</text>
+<line x1="85" y1="162.00" x2="90" y2="162.00" stroke="black"/>
+<text x="80" y="166.00" text-anchor="end" font-size="12" font-family="monospace">4.3</text>
+<line x1="85" y1="70.00" x2="90" y2="70.00" stroke="black"/>
+<text x="80" y="74.00" text-anchor="end" font-size="12" font-family="monospace">12.7</text>
+<rect x="108.00" y="208.65" width="54.00" height="321.35" fill="#1B998B"/>
+<rect x="198.00" y="208.65" width="54.00" height="222.02" fill="#6A4C93"/>
+<text x="225.00" y="554" text-anchor="end" transform="rotate(-30 225.00 554)" font-size="12" font-family="sans-serif">agent-mesh</text>
+<rect x="378.00" y="85.31" width="54.00" height="123.34" fill="#1B998B"/>
+<rect x="468.00" y="70.00" width="54.00" height="138.65" fill="#6A4C93"/>
+<text x="495.00" y="554" text-anchor="end" transform="rotate(-30 495.00 554)" font-size="12" font-family="sans-serif">plugin-host</text>
+<rect x="648.00" y="208.65" width="54.00" height="52.35" fill="#1B998B"/>
+<rect x="738.00" y="208.65" width="54.00" height="51.87" fill="#6A4C93"/>
+<text x="765.00" y="554" text-anchor="end" transform="rotate(-30 765.00 554)" font-size="12" font-family="sans-serif">embedding-farm</text>
+<rect x="918.00" y="208.65" width="54.00" height="138.32" fill="#1B998B"/>
+<rect x="1008.00" y="208.65" width="54.00" height="123.03" fill="#6A4C93"/>
+<text x="1035.00" y="554" text-anchor="end" transform="rotate(-30 1035.00 554)" font-size="12" font-family="sans-serif">terminal-graph</text>
+<text x="20" y="300.00" transform="rotate(-90 20 300.00)" text-anchor="middle" font-size="13" font-family="sans-serif">improvement % (higher is better)</text>
+<rect x="90" y="640" width="18" height="18" fill="#1B998B"/>
+<text x="114" y="654" font-size="13" font-family="sans-serif">runtime latency %</text>
+<rect x="310" y="640" width="18" height="18" fill="#6A4C93"/>
+<text x="334" y="654" font-size="13" font-family="sans-serif">runtime throughput %</text>
+</svg>

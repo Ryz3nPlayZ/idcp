@@ -1,24 +1,3 @@
-# IDCP Bench Results (Publishable Run)
-
-This document captures a full conventional-vs-IDCP benchmark run for the current prototype, plus generated graphs.
-
-## Methodology
-
-- Benchmark command: `cargo run -p idcp-bench --release -- --trials 12 --csv docs/artifacts/idcp-bench-2026-04-20.csv`
-- Graph command: `python3 scripts/plot_idcp_bench.py docs/artifacts/idcp-bench-2026-04-20.csv docs/artifacts`
-- Date (UTC): 2026-04-20
-- Trials per scenario: 12
-- Conventional baseline: `ExecutionMode::Naive`
-- IDCP mode: `ExecutionMode::Idcp`
-- Scenarios exercised (all 4 subsystems are engaged in each scenario):
-  - flow-sensitive mesh (transport + placement)
-  - memory-sharing host (memory + pressure)
-  - batch-heavy pipeline (flow batching + pressure)
-  - interactive graph (low-latency + locality)
-
-## Benchmark Output
-
-```text
 # IDCP conventional-vs-idcp benchmark
 trials_per_scenario=12
 | scenario | purpose | mem% | flow% | copy% | runtime_lat% | runtime_tput% | score_x |
@@ -52,38 +31,3 @@ trials_per_scenario=12
   - runtime throughput mean±sd: default=11451±1658 idcp=10156±1438
 
 wrote csv=/workspace/idcp/docs/artifacts/idcp-bench-2026-04-20.csv
-```
-
-## Graphs
-
-### Subsystem improvements
-
-![Subsystem improvements](artifacts/subsystem_improvements.svg)
-
-### Runtime improvements
-
-![Runtime improvements](artifacts/runtime_improvements.svg)
-
-### Score multiplier
-
-![Score multiplier](artifacts/score_multiplier.svg)
-
-### Measured flow means
-
-![Measured flow means](artifacts/flow_means_ns.svg)
-
-## Interpretation
-
-- **Memory and copy penalties consistently improve** in IDCP mode across all scenarios.
-- **Flow is profile-dependent**: IDCP strongly improves flow for `embedding-farm`, but regresses for `agent-mesh`, `plugin-host`, and slightly for `terminal-graph` in this run.
-- **Runtime is mixed**:
-  - `plugin-host` and `terminal-graph` show modest runtime wins.
-  - `agent-mesh` is near parity.
-  - `embedding-farm` shows a runtime regression despite very strong flow improvements, signaling a batching/runtime pipeline trade-off.
-
-## Research Priorities Suggested by Data
-
-1. Add adaptive transport fallback when measured flow degrades vs baseline for small payload cross-process workloads.
-2. Perform batching sweeps and choose batch size from measured runtime Pareto front (latency vs throughput), not static profile defaults.
-3. Add ablation benchmarks (`flow-only`, `memory-only`, `placement-only`, `pressure-only`) to isolate each subsystem contribution to final runtime.
-4. Add multi-baseline comparisons (not just one naive baseline) for stronger publishable claims.
