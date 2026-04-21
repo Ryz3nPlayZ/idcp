@@ -1,4 +1,6 @@
 use idcp_system::{ExecutionMode, ScenarioProfile, evaluate, evaluate_measured, execute_runtime};
+use std::fs;
+use std::path::PathBuf;
 
 struct BenchmarkScenario {
     profile: ScenarioProfile,
@@ -55,12 +57,30 @@ struct RuntimeStats {
     throughput: Stats,
 }
 
+struct ScenarioRow {
+    scenario: &'static str,
+    purpose: &'static str,
+    mem_percent: f64,
+    flow_percent: f64,
+    copy_percent: f64,
+    runtime_latency_percent: f64,
+    runtime_throughput_percent: f64,
+    score_multiplier: f64,
+    flow_default_mean_ns: f64,
+    flow_idcp_mean_ns: f64,
+    runtime_latency_default_mean_ns: f64,
+    runtime_latency_idcp_mean_ns: f64,
+    runtime_tput_default_mean: f64,
+    runtime_tput_idcp_mean: f64,
+}
+
+struct CliConfig {
+    trials: usize,
+    csv_path: Option<PathBuf>,
+}
+
 fn main() {
-    let trials = std::env::args()
-        .nth(1)
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(10)
-        .max(3);
+    let config = parse_args();
 
     let scenarios = [
         BenchmarkScenario {
@@ -82,11 +102,13 @@ fn main() {
     ];
 
     println!("# IDCP conventional-vs-idcp benchmark");
-    println!("trials_per_scenario={trials}");
+    println!("trials_per_scenario={}", config.trials);
     println!(
         "| scenario | purpose | mem% | flow% | copy% | runtime_lat% | runtime_tput% | score_x |"
     );
     println!("| :-- | :-- | --: | --: | --: | --: | --: | --: |");
+
+    let mut rows = Vec::new();
 
     for scenario in scenarios {
         let naive_model = evaluate(scenario.profile, ExecutionMode::Naive);
@@ -103,15 +125,17 @@ fn main() {
         let score_multiplier =
             idcp_model.total_score as f64 / naive_model.total_score.max(1) as f64;
 
-        let naive_flow = collect_flow_stats(scenario.profile, ExecutionMode::Naive, trials);
-        let idcp_flow = collect_flow_stats(scenario.profile, ExecutionMode::Idcp, trials);
+        let naive_flow = collect_flow_stats(scenario.profile, ExecutionMode::Naive, config.trials);
+        let idcp_flow = collect_flow_stats(scenario.profile, ExecutionMode::Idcp, config.trials);
         let flow_improvement = match (&naive_flow, &idcp_flow) {
             (Some(naive), Some(idcp)) => percent_better(naive.mean.max(1.0), idcp.mean.max(1.0)),
             _ => 0.0,
         };
 
-        let naive_runtime = collect_runtime_stats(scenario.profile, ExecutionMode::Naive, trials);
-        let idcp_runtime = collect_runtime_stats(scenario.profile, ExecutionMode::Idcp, trials);
+        let naive_runtime =
+            collect_runtime_stats(scenario.profile, ExecutionMode::Naive, config.trials);
+        let idcp_runtime =
+            collect_runtime_stats(scenario.profile, ExecutionMode::Idcp, config.trials);
         let (runtime_latency_improvement, runtime_throughput_improvement) =
             match (&naive_runtime, &idcp_runtime) {
                 (Some(naive), Some(idcp)) => (
@@ -192,7 +216,102 @@ fn main() {
             );
         }
         println!();
+
+        rows.push(ScenarioRow {
+            scenario: scenario.profile.slug(),
+            purpose: scenario.purpose,
+            mem_percent: mem_improvement,
+            flow_percent: flow_improvement,
+            copy_percent: copy_improvement,
+            runtime_latency_percent: runtime_latency_improvement,
+            runtime_throughput_percent: runtime_throughput_improvement,
+            score_multiplier,
+            flow_default_mean_ns: naive_flow.as_ref().map(|s| s.mean).unwrap_or(0.0),
+            flow_idcp_mean_ns: idcp_flow.as_ref().map(|s| s.mean).unwrap_or(0.0),
+            runtime_latency_default_mean_ns: naive_runtime
+                .as_ref()
+                .map(|s| s.latency_ns.mean)
+                .unwrap_or(0.0),
+            runtime_latency_idcp_mean_ns: idcp_runtime
+                .as_ref()
+                .map(|s| s.latency_ns.mean)
+                .unwrap_or(0.0),
+            runtime_tput_default_mean: naive_runtime
+                .as_ref()
+                .map(|s| s.throughput.mean)
+                .unwrap_or(0.0),
+            runtime_tput_idcp_mean: idcp_runtime
+                .as_ref()
+                .map(|s| s.throughput.mean)
+                .unwrap_or(0.0),
+        });
     }
+
+    if let Some(path) = config.csv_path {
+        if let Err(err) = write_csv(&path, &rows) {
+            eprintln!("failed to write csv {}: {err}", path.display());
+            std::process::exit(1);
+        }
+        println!("wrote csv={}", path.display());
+    }
+}
+
+fn parse_args() -> CliConfig {
+    let mut trials = 10_usize;
+    let mut csv_path = None;
+    let mut args = std::env::args().skip(1);
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--trials" => {
+                if let Some(value) = args.next() {
+                    if let Ok(parsed) = value.parse::<usize>() {
+                        trials = parsed;
+                    }
+                }
+            }
+            "--csv" => {
+                if let Some(value) = args.next() {
+                    csv_path = Some(PathBuf::from(value));
+                }
+            }
+            value => {
+                if let Ok(parsed) = value.parse::<usize>() {
+                    trials = parsed;
+                }
+            }
+        }
+    }
+
+    CliConfig {
+        trials: trials.max(3),
+        csv_path,
+    }
+}
+
+fn write_csv(path: &PathBuf, rows: &[ScenarioRow]) -> std::io::Result<()> {
+    let mut out = String::new();
+    out.push_str("scenario,purpose,mem_percent,flow_percent,copy_percent,runtime_latency_percent,runtime_throughput_percent,score_multiplier,flow_default_mean_ns,flow_idcp_mean_ns,runtime_latency_default_mean_ns,runtime_latency_idcp_mean_ns,runtime_tput_default_mean,runtime_tput_idcp_mean\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}\n",
+            row.scenario,
+            row.purpose,
+            row.mem_percent,
+            row.flow_percent,
+            row.copy_percent,
+            row.runtime_latency_percent,
+            row.runtime_throughput_percent,
+            row.score_multiplier,
+            row.flow_default_mean_ns,
+            row.flow_idcp_mean_ns,
+            row.runtime_latency_default_mean_ns,
+            row.runtime_latency_idcp_mean_ns,
+            row.runtime_tput_default_mean,
+            row.runtime_tput_idcp_mean
+        ));
+    }
+    fs::write(path, out)
 }
 
 fn collect_flow_stats(

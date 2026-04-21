@@ -1,0 +1,5 @@
+scenario,purpose,mem_percent,flow_percent,copy_percent,runtime_latency_percent,runtime_throughput_percent,score_multiplier,flow_default_mean_ns,flow_idcp_mean_ns,runtime_latency_default_mean_ns,runtime_latency_idcp_mean_ns,runtime_tput_default_mean,runtime_tput_idcp_mean
+agent-mesh,flow-sensitive mesh (transport + placement),56.5418,-29.8145,43.7500,-29.5293,-20.4014,2.1790,29957.5000,38889.1667,99765.5833,129225.6667,10214.5833,8130.6667
+plugin-host,memory-sharing host (memory + pressure),75.4123,-10.9615,43.7500,11.3337,12.7406,3.1713,50738.4167,56300.0833,108541.7500,96239.9167,9361.8333,10554.5833
+embedding-farm,batch-heavy pipeline (flow batching + pressure),53.6484,92.2807,65.6250,-4.8105,-4.7662,4.8613,28043.4167,2164.7500,87375.3333,91578.5000,11495.9167,10948.0000
+terminal-graph,interactive graph (low-latency + locality),53.7628,-33.8065,43.7500,-12.7106,-11.3056,2.1712,26304.3333,35196.9167,89044.8333,100363.0000,11450.8333,10156.2500
